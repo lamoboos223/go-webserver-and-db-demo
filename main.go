@@ -18,7 +18,7 @@ type Message struct {
 
 func connectDB() (*sql.DB, error) {
 	// Connection string
-	connStr := "host=localhost port=5432 password=mysecretpassword dbname=postgres sslmode=disable"
+	connStr := "host=localhost port=5432 username=postgres password=mysecretpassword dbname=postgres sslmode=disable"
 
 	// Open database connection
 	db, err := sql.Open("postgres", connStr)
