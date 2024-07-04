@@ -19,7 +19,6 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-// connectDB ddd
 func connectDB() (*sql.DB, error) {
 	// Connection string
 	connStr := "host=localhost port=5432 password=mysecretpassword dbname=postgres sslmode=disable"
