@@ -15,10 +15,13 @@ var apikeys []string
 type Message struct {
 	Text string `json:"text"`
 }
+type ErrorResponse struct {
+	Message string `json:"message"`
+}
 
 func connectDB() (*sql.DB, error) {
 	// Connection string
-	connStr := "host=localhost port=5432 username=postgres password=mysecretpassword dbname=postgres sslmode=disable"
+	connStr := "host=localhost port=5432 password=mysecretpassword dbname=postgres sslmode=disable"
 
 	// Open database connection
 	db, err := sql.Open("postgres", connStr)
@@ -67,65 +70,66 @@ func stringInSlice(target string, list []string) bool {
 	return false
 }
 func helloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	// Set Content-Type header
-	w.Header().Set("Content-Type", "application/json")
-	// Parse JSON request body
-	var message Message
-	apikey := r.Header.Get("apikey")
-
-	if err := apikey; err == "" {
-		errorMessage := "No Api key given"
-		http.Error(w, errorMessage, http.StatusUnauthorized)
-		return
-	} else {
-		fmt.Println("apikey is: ", apikey)
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if stringInSlice(apikey, apikeys) {
-		// Validate and process the message if needed
-		// For demonstration, let's just echo back the message
-		response := Message{Text: "Hello, " + message.Text}
-
-		// Encode response as JSON and send it
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		response := Message{Text: "You have to register your api key"}
-		// manipulate status code
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(response)
-		return
-	}
-}
-
-func main() {
-
 	// Connect to PostgreSQL
 	db, err := connectDB()
 	if err != nil {
 		log.Fatalf("Error connecting to database: %v", err)
 	}
 
-	// Fetch users
 	// Receive apikeys from the channel
 	// Use a channel to receive apikeys
 	apikeysChan := make(chan []string)
-	go fetchApikeys(db, apikeysChan)
-	apikeys = <-apikeysChan
+	go fetchApikeys(db, apikeysChan) // goroutine
+	apikeys = <-apikeysChan          // load the apikeys from the channel to the array
+	defer db.Close()
+	// Parse JSON request body
+	var message Message
+	apikey := r.Header.Get("apikey")
+	// Set Content-Type header
+	w.Header().Set("Content-Type", "application/json")
+
+	if apikey == "" {
+		errorResponse := ErrorResponse{Message: "No Api key given"}
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	} else {
+		fmt.Println("apikey is: ", apikey)
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&message); err != nil {
+		errorResponse := ErrorResponse{Message: "Not valid payload"}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse)
+		return
+	}
+	if stringInSlice(apikey, apikeys) {
+		response := Message{Text: "Hello, " + message.Text}
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		response := Message{Text: "Hello, " + message.Text + " we have registered your apikey because it's not in our db"}
+		register(apikey)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+}
+func register(apikey string) {
+	db, _ := connectDB()
+	insertQuery := `
+		INSERT INTO authentication_keys (apikey)
+		VALUES ($1)`
+	db.Exec(insertQuery, apikey)
 	db.Close()
-
-	// run the wevserver in Goroutines mode to enhance performance
-	go http.HandleFunc("/hello", helloWorldHandler)
-
+}
+func main() {
+	// run the webserver in Goroutines mode to enhance performance
+	go http.HandleFunc("/hello", helloWorldHandler) // goroutine
 	fmt.Println("Server is listening on port 8080...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
-		// log.Fatal it's like system.exit(2)
 		log.Fatal(err)
 	}
 }
